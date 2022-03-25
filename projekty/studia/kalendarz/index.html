@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang=pl>
+    <head>
+        <meta charset=UTF-8>
+        <meta http-equiv=X-UA-Compatible content='IE=edge'>
+        <meta name=viewport content='width=device-width, initial-scale=1.0'>
+        <title>Calendar</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <main>
+            <div id=main_part>
+                <header id=month>
+                    <div id=month_back onclick=changeMonth(-1)> &lt; </div>
+                    <div id=month_name></div> 
+                    <div id=month_next onclick=changeMonth(1)> &gt; </div>
+                </header>
+                <div id=calendar_grid></div>
+            </div>
+            <aside>
+                <div id=notes_container>
+                    <header id=selected_date_name></header>
+                    <hr style="height:2px;border-width:0;color:white;background-color:white;width:100%;">
+                    <div id=notes_list></div>
+                </div>
+                <div id=note_adder>
+                    <div id=dots_container>
+                        <div class='dot color0' id=dot0 onclick=selectMarker(0)></div>
+                        <div class='dot color1' id=dot1 onclick=selectMarker(1)></div>
+                        <div class='dot color2' id=dot2 onclick=selectMarker(2)></div>
+                        <div class='dot color3' id=dot3 onclick=selectMarker(3)></div>
+                    </div>
+                    <div id=new_note>
+                        <div class=dot id=selected_dot></div>
+                        <input id=new_note_content type=text placeholder='Wpisz treść notatki...'/>
+                    </div>
+                    <button id=add_note_btn onclick=saveNote()>Dodaj notatkę</button>
+                </div>
+            </aside>
+        </main>
+        <button class=btn id=settings_btn onclick='getById("settings_over").style.display = "block"'>⚙</button>
+        <div id=settings_over>
+            <button class=btn id=settings_close onclick='getById("settings_over").style.display = "none"'>×</button>
+            <div class=settings>
+                <div class=choose_theme>Wybierz motyw:</div>
+                <div class=themes>
+                    <button class=theme  onclick='changeTheme("mint")'> mint </button>
+                    <button class=theme onclick='changeTheme("cottagecore")'> cottagecore </button>
+                    <button class=theme onclick='changeTheme("pink")'> pink </button>
+                    <button class=theme onclick='changeTheme("neon")'> neon </button>
+                    <button class=theme onclick='changeTheme("leather")'> leather </button>
+                    <button class=theme onclick='changeTheme("dark")'> dark </button>
+                </div>
+                <button id=export_btn onclick=exportCalendar()> Wyeksportuj do pliku (*.ics) </button>
+            </div>
+        </div>
+        <script>
+
+            let date = new Date()
+            
+            let year = date.getFullYear()
+            let month = date.getMonth() + 1
+            
+            let monthsList = [
+                'Styczeń', 'Luty', 'Marzec', 
+                'Kwiecień', 'Maj', 'Czerwiec',
+                'Lipiec', 'Sierpień', 'Wrzesień', 
+                'Październik', 'Listopad', 'Grudzień'
+            ]
+
+            let monthsList2 = [
+                'stycznia', 'lutego', 'marca', 
+                'kwietnia', 'maja', 'czerwca',
+                'lipca', 'sierpnia', 'września', 
+                'października', 'listopada', 'grudnia'
+            ]
+
+            let selectedYear = year
+            let selectedMonth = month
+            let selectedDay = date.getDate()
+
+            let selectedNotes = []
+
+            let selectedColor = 'var(--selected-color)'
+            let deselectColor = '#ffffff00'
+            let sundayColor = 'var(--sunday-color)'
+
+            let selectedMarker = 0
+
+            let storagePrefix = '$%$%$PeRsOnAlCaLeNdAr$%$%$'
+
+            
+            getById = id => document.getElementById(id)
+            log = content => console.log(content)
+            
+            window.onload = () => {
+                populateGrid(year, month)
+                select(selectedDay + dayOfTheWeek(year, month) - 2)
+                selectMarker(selectedMarker)
+                loadTheme()
+            }
+
+            let dayOfTheWeek = (year_, month_) => {
+                var t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+                year_ -= +(month_ < 3)
+                return (year_ + ~~(year_ / 4) - ~~(year_ / 100) + ~~(year_ / 400) + t[month_ - 1] + 1) % 7
+            }
+
+            let totalDays = (year_, month_) => {
+                var t = [1, -2, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1]
+                return 30 + t[month_ - 1] + (((month_ == 2) & (((year_ % 4 == 0) & (year_ % 100 != 0)) | (year_ % 400 == 0))) ? 1 : 0)
+            }
+
+            function generateGrid(){
+                var content = '<div id=table>'
+                for(var row = 0; row < 6; row++){
+                    content += '<div class=row>'
+                    for(var cell = 0; cell < 7; cell++){
+                        content += `<div class=cell id=cell_${cell + row * 7} onclick=select(${cell + row * 7})>
+                                    <div class=number id=number_${cell + row * 7}></div>
+                                    <div class=markers id=markers_${cell + row * 7}>
+                                        <div class='dot color0 marker' id=marker_${cell + row * 7}_0></div>
+                                        <div class='dot color1 marker' id=marker_${cell + row * 7}_1></div>
+                                        <div class='dot color2 marker' id=marker_${cell + row * 7}_2></div>
+                                        <div class='dot color3 marker' id=marker_${cell + row * 7}_3></div>
+                                    </div></div>`
+                    }
+                    content += '</div>'
+                }
+                getById('calendar_grid').innerHTML = content + '</div>'
+            }
+
+            function populateGrid(year_, month_){
+                generateGrid()
+                var firstCell = (!dayOfTheWeek(year_, month_)) ? 7 : dayOfTheWeek(year_, month_)
+                var dayCount = totalDays(year_, month_) 
+                for(var i = 0; i < dayCount; i++){
+                    getById(`number_${firstCell + i - 1}`).innerHTML = i + 1
+                    getById(`cell_${firstCell + i - 1}`).style.cursor = 'pointer'
+                    updateMarkersForDate(year_, month_, i + 1)
+                }
+                updateHeader(year_, month_)
+                if((month_ == selectedMonth) & (year_ == selectedYear))
+                    select(selectedDay + dayOfTheWeek(year_, month_) - 2)
+                for(var i = 6; i < 42; i+=7) getById(`cell_${i}`).style.color = sundayColor
+            }
+
+            function updateMarkersForDate(year_, month_, day_){
+                var firstCell = (!dayOfTheWeek(year_, month_)) ? 7 : dayOfTheWeek(year_, month_)
+                var markers = getMarkers(year_, month_, day_)
+                for(var i = 0; i < 4; i++){
+                    getById(`marker_${firstCell + day_ - 2}_${i}`).style.display = 'none'
+                    if(markers[i]) getById(`marker_${firstCell + day_ - 2}_${i}`).style.display = 'block'
+                }
+            }
+
+            function changeMonth(shift){
+                year = ~~((year * 12 + month - 1 + shift) / 12)
+                month = (year * 12 + month - 1 + shift) % 12 + 1
+                populateGrid(year, month)
+            }
+
+            function updateHeader(year_, month_){
+                getById('month_name').innerHTML = monthsList[month_ - 1] + ' ' + year_
+            }
+
+            function select(n){
+                var temp = n - dayOfTheWeek(year, month) + 2
+                if((temp >= 1)&(temp <= totalDays(year, month))){
+                    getById(`cell_${selectedDay + dayOfTheWeek(year, month) - 2}`).style.backgroundColor = deselectColor;
+                    selectedDay = temp
+                    selectedYear = year
+                    selectedMonth = month
+                    getById(`cell_${n}`).style.backgroundColor = selectedColor;
+                    updateSelectedHeader()
+                    updateSelectedNotesList()
+                }
+            }
+
+            function updateSelectedNotesList(){
+                selectedNotes = getNotes(selectedYear, selectedMonth, selectedDay)
+                showNotesList()
+            }
+
+            function showNotesList(){
+                var content = ''
+                for(const [i,note] of selectedNotes.entries()){
+                    var marker_class = '\"dot '
+                    switch(note['selectedMarker']){
+                        case 0: marker_class += 'color0\"'
+                                break
+                        case 1: marker_class += 'color1\"'
+                                break
+                        case 2: marker_class += 'color2\"'
+                                break
+                        case 3: marker_class += 'color3\"'
+                    }
+                    content += `<div class=one_note onmouseover=showRemoveNoteButton(${i}) onmouseleave=hideRemoveNoteButton(${i})>
+                                    <div class=${marker_class}></div>
+                                    <span class=one_note_content>${note['textValue']}</span>
+                                    <div class=remove_note_btn id=rmv_${i} onclick=removeNote(${note['uid']})>Usuń</div>
+                                </div>`
+                }
+                getById('notes_list').innerHTML = content
+            }
+
+            function updateSelectedHeader(){
+                getById('selected_date_name').innerHTML = selectedDay + " " + monthsList2[selectedMonth - 1] + " " + selectedYear
+            }
+
+            function showRemoveNoteButton(n){ getById(`rmv_${n}`).style.display = 'block' }
+            function hideRemoveNoteButton(n){ getById(`rmv_${n}`).style.display = 'none' }
+
+            function selectMarker(n){
+                getById(`dot${selectedMarker}`).style.width = '1.5vw'
+                getById(`dot${selectedMarker}`).style.height = '1.5vw'
+                getById(`dot${n}`).style.width = '2vw'
+                getById(`dot${n}`).style.height = '2vw'
+                getById('selected_dot').className = getById(`dot${n}`).className
+                selectedMarker = n;
+            }
+
+            function saveNote(){
+                var uid = new Date().getTime()
+                var key = storagePrefix + 'y' + selectedYear + 'm' + selectedMonth + 'd' + selectedDay + 'uid' + uid
+                var textValue = getById('new_note_content').value
+                if(textValue != '') localStorage.setItem(key, JSON.stringify({selectedMarker,textValue,uid,selectedYear,selectedMonth,selectedDay}))
+                getById('new_note_content').value = ''
+                updateSelectedNotesList()
+                updateMarkersForDate(selectedYear, selectedMonth, selectedDay)
+            }
+
+            getNotes = (year_, month_, day_) => {
+                var result = []
+                for(var i = 0; i < localStorage.length; i++)
+                    if(localStorage.key(i).includes(storagePrefix + 'y' + year_ + 'm' + month_ + 'd' + day_ + 'uid'))
+                        result.push(JSON.parse(localStorage.getItem(localStorage.key(i))))
+                return result
+            }
+
+            getAllNotes = () => {
+                var result = []
+                for(var i = 0; i < localStorage.length; i++)
+                    if(localStorage.key(i).includes(storagePrefix))
+                        result.push(JSON.parse(localStorage.getItem(localStorage.key(i))))
+                return result
+            }
+
+            getMarkers = (year_, month_, day_) => {
+                var notes = getNotes(year_, month_, day_)
+                var result = [0, 0, 0, 0]
+                for(var note of notes)
+                    if(result.some(item => item !== 1))
+                        result[note['selectedMarker']] = 1
+                return result
+            }
+
+            function removeNote(uid){
+                key = storagePrefix + 'y' + selectedYear + 'm' + selectedMonth + 'd' + selectedDay + 'uid' + uid
+                localStorage.removeItem(key)
+                updateMarkersForDate(selectedYear,selectedMonth,selectedDay)
+                updateSelectedNotesList()
+            }
+
+            function exportCalendar(){
+                var content = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//personal calendar//MAW calendar//EN\nCALSCALE:GREGORIAN\n'
+                var notes = getAllNotes()
+                for(note of notes){
+                    var sDate = new Date(note['selectedYear'],note['selectedMonth']-1,note['selectedDay'])
+                    var eDate = new Date(sDate)
+                    eDate.setDate(eDate.getDate() + 1)
+                    content += `BEGIN:VEVENT\nUID:${note['uid']}@mawcalendar.com\n`
+                    content += `DTSTART;VALUE=DATE:${sDate.getFullYear()}${(sDate.getMonth() + 1 >= 10)?sDate.getMonth() + 1:'0'+(sDate.getMonth() + 1)}${sDate.getDate()}\n`
+                    content += `DTEND;VALUE=DATE:${sDate.getFullYear()}${(eDate.getMonth() + 1 >= 10)?eDate.getMonth() + 1:'0'+(eDate.getMonth() + 1)}${eDate.getDate()}\n`
+                    content += `SUMMARY:${note['textValue']}\nEND:VEVENT\n`
+                }
+                content += 'END:VCALENDAR'
+                if(notes.length > 0){
+                    var element = document.createElement('a')
+                    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content))
+                    element.setAttribute('download','kalendarz.ics')
+                    element.style.display = 'none'
+                    document.body.appendChild(element)
+                    log(content)
+                    element.click()
+                    document.body.removeChild(element)
+                }
+            }
+            function changeTheme(name){
+                switch(name){
+                    case 'mint':{
+                        document.documentElement.style.setProperty('--background-color', '#1eae9e');
+                        document.documentElement.style.setProperty('--main-text-color', '#ffffff');
+                        document.documentElement.style.setProperty('--bg-color', '#ffffff40');
+                        document.documentElement.style.setProperty('--selected-color', '#ffffff66');
+                        document.documentElement.style.setProperty('--note-color-0', '#74e7d9');
+                        document.documentElement.style.setProperty('--note-color-1', '#99c0ff');
+                        document.documentElement.style.setProperty('--note-color-2', '#e8dcb9');
+                        document.documentElement.style.setProperty('--note-color-3', '#f2cee6');
+                        document.documentElement.style.setProperty('--add-note-color', '#70a7ff');
+                        document.documentElement.style.setProperty('--sunday-color', '#e18ec5');
+                        break;
+                    }
+                    case 'cottagecore':{
+                        document.documentElement.style.setProperty('--background-color', '#8e806e');
+                        document.documentElement.style.setProperty('--main-text-color', '#ffffff');
+                        document.documentElement.style.setProperty('--bg-color', '#ffffff40');
+                        document.documentElement.style.setProperty('--selected-color', '#ffffff66');
+                        document.documentElement.style.setProperty('--note-color-0', '#E07A5F');
+                        document.documentElement.style.setProperty('--note-color-1', '#F2CC8F');
+                        document.documentElement.style.setProperty('--note-color-2', '#81B29A');
+                        document.documentElement.style.setProperty('--note-color-3', '#3D405B');
+                        document.documentElement.style.setProperty('--add-note-color', '#e6b463');
+                        document.documentElement.style.setProperty('--sunday-color', '#d4432c');
+                        break;
+                    }
+                    case 'pink':{
+                        document.documentElement.style.setProperty('--background-color', '#E69EB3');
+                        document.documentElement.style.setProperty('--main-text-color', '#FFFBFA');
+                        document.documentElement.style.setProperty('--bg-color', '#FFFBFA40');
+                        document.documentElement.style.setProperty('--selected-color', '#FFFBFA60');
+                        document.documentElement.style.setProperty('--note-color-0', '#e18ec5');
+                        document.documentElement.style.setProperty('--note-color-1', '#70A7FF');
+                        document.documentElement.style.setProperty('--note-color-2', '#35C4FD');
+                        document.documentElement.style.setProperty('--note-color-3', '#ACF39D');
+                        document.documentElement.style.setProperty('--add-note-color', '#812261');
+                        document.documentElement.style.setProperty('--sunday-color', '#812261');
+                        break;
+                    }
+                    case 'neon':{
+                        document.documentElement.style.setProperty('--background-color', '#1B1F3B');
+                        document.documentElement.style.setProperty('--main-text-color', '#D7B1FC');
+                        document.documentElement.style.setProperty('--bg-color', '#C489FA40');
+                        document.documentElement.style.setProperty('--selected-color', '#C489FA66');
+                        document.documentElement.style.setProperty('--note-color-0', '#CC3E9C');
+                        document.documentElement.style.setProperty('--note-color-1', '#9C3BF7');
+                        document.documentElement.style.setProperty('--note-color-2', '#0DB9FD');
+                        document.documentElement.style.setProperty('--note-color-3', '#73EB5C');
+                        document.documentElement.style.setProperty('--add-note-color', '#711E55');
+                        document.documentElement.style.setProperty('--sunday-color', '#CC3E9C');
+                        break;
+                    }
+                    case 'dark':{
+                        document.documentElement.style.setProperty('--background-color', '#151515');
+                        document.documentElement.style.setProperty('--main-text-color', '#D5D8EC');
+                        document.documentElement.style.setProperty('--bg-color', '#383838');
+                        document.documentElement.style.setProperty('--selected-color', '#5b5b5b');
+                        document.documentElement.style.setProperty('--note-color-0', '#16537e');
+                        document.documentElement.style.setProperty('--note-color-1', '#2986cc');
+                        document.documentElement.style.setProperty('--note-color-2', '#ce7e00');
+                        document.documentElement.style.setProperty('--note-color-3', '#ffd966');
+                        document.documentElement.style.setProperty('--add-note-color', '#16537e');
+                        document.documentElement.style.setProperty('--sunday-color', '#ce7e00');
+                        break;
+                    }
+                    case 'leather':{
+                        document.documentElement.style.setProperty('--background-color', '#552410');
+                        document.documentElement.style.setProperty('--main-text-color', '#ffede5');
+                        document.documentElement.style.setProperty('--bg-color', '#de7b5240');
+                        document.documentElement.style.setProperty('--selected-color', '#de7b5266');
+                        document.documentElement.style.setProperty('--note-color-0', '#de7b52');
+                        document.documentElement.style.setProperty('--note-color-1', '#ffa444');
+                        document.documentElement.style.setProperty('--note-color-2', '#a40f00');
+                        document.documentElement.style.setProperty('--note-color-3', '#67493b');
+                        document.documentElement.style.setProperty('--add-note-color', '#ffa444');
+                        document.documentElement.style.setProperty('--sunday-color', '#a40f00');
+                        break;
+                    }
+                    default: break;
+                }
+                saveTheme(name)
+            }
+            function saveTheme(theme){
+                localStorage.setItem(storagePrefix + 'theme', theme)
+            }
+            function loadTheme(){
+                if(localStorage.getItem(storagePrefix + 'theme') !== null)
+                    changeTheme(localStorage.getItem(storagePrefix + 'theme'))
+            }
+        </script>
+    </body>
+</html>
